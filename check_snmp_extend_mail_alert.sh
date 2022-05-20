@@ -20,8 +20,8 @@ then
    exit $NAGIOS_UNKNOWN
 fi
 
-tmp_file=".${0##*/}-${EXTEND_NAME}-${SNMP_HOST}"
-tmp_file=${tmp_file//.sh/.tmp}
+tmp_file=$(basename -- $0)
+tmp_file=".${tmp_file%.*}_${EXTEND_NAME}_${SNMP_HOST}.tmp"
 
 cmd_result=$($SNMPGET -OQv -l authPriv -u $SNMP_USER -A $SNMP_PASS -X $SNMP_PASS $SNMP_HOST:$SNMP_PORT NET-SNMP-EXTEND-MIB::nsExtendResult.\"$EXTEND_NAME\")
 cmd_output=""
