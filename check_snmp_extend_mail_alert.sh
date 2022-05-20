@@ -14,18 +14,18 @@ EXTEND_NAME=$5
 MAIL_TITLE=$6
 MAIL_RECIPIENT=$7
 
-[ -z "$SNMP_HOST" -o -z "$SNMP_PORT" -o -z "$SNMP_USER" -o -z "$SNMP_PASS" -o -z "$EXTEND_NAME" -o -z "$MAIL_TITLE" -o -z "$MAIL_RECIPIENT" ] && {
-   echo "Syntax error"
-   echo "Usage: $0 <host> <port> <user> <pass> <extend> <mail_title> <mail_recipient>"
+[[ -z "$SNMP_HOST" || -z "$SNMP_PORT" || -z "$SNMP_USER" || -z "$SNMP_PASS" || -z "$EXTEND_NAME" || -z "$MAIL_TITLE" || -z "$MAIL_RECIPIENT" ]]
+then
+   echo "Syntax error\nUsage: $0 <host> <port> <user> <pass> <extend> <mail_title> <mail_recipient>"
    exit $NAGIOS_UNKNOWN
-}
+fi
 
-TMP_FILE=".${0##*/}-${EXTEND_NAME}-${SNMP_HOST}"
-TMP_FILE=${TMP_FILE//.sh/.tmp}
+tmp_file=".${0##*/}-${EXTEND_NAME}-${SNMP_HOST}"
+tmp_file=${tmp_file//.sh/.tmp}
 
 cmd_result=$($SNMPGET -OQv -l authPriv -u $SNMP_USER -A $SNMP_PASS -X $SNMP_PASS $SNMP_HOST:$SNMP_PORT NET-SNMP-EXTEND-MIB::nsExtendResult.\"$EXTEND_NAME\")
 cmd_output=""
-if [ -n "$cmd_result" ];
+if [ -n "$cmd_result" ]
 then
     cmd_output=$($SNMPGET -OQv -l authPriv -u $SNMP_USER -A $SNMP_PASS -X $SNMP_PASS $SNMP_HOST:$SNMP_PORT NET-SNMP-EXTEND-MIB::nsExtendOutputFull.\"$EXTEND_NAME\")
 fi
@@ -36,23 +36,23 @@ then
     exit $NAGIOS_UNKNOWN
 fi
 
-if [ ! -f "/tmp/$TMP_FILE" ]
+if [ ! -f "/tmp/$tmp_file" ]
 then
-    touch "/tmp/$TMP_FILE"
+    touch "/tmp/$tmp_file"
 fi
 
 if [ "$cmd_result" == "$NAGIOS_CRITICAL" ]
 then
-    state=$(cat "/tmp/$TMP_FILE")
+    state=$(cat "/tmp/$tmp_file")
     if [ "$state" != "$NAGIOS_CRITICAL" ]
     then
         hostname=$(snmpwalk -O qv -c public -v 2c $SNMP_HOST .1.3.6.1.2.1.1.5.0 | tr -d '"')
         mail_output=${cmd_output//<br\/>/\\n}
         echo -e ${mail_output} | mail -s "$hostname $MAIL_TITLE" $MAIL_RECIPIENT
-        echo $NAGIOS_CRITICAL > "/tmp/$TMP_FILE"
+        echo $NAGIOS_CRITICAL > "/tmp/$tmp_file"
     fi
 else
-    echo $cmd_result > "/tmp/$TMP_FILE"
+    echo $cmd_result > "/tmp/$tmp_file"
 fi
 
 echo $cmd_output
