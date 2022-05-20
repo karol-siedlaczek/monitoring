@@ -16,7 +16,7 @@ MAIL_RECIPIENT=$7
 
 if [[ -z "$SNMP_HOST" || -z "$SNMP_PORT" || -z "$SNMP_USER" || -z "$SNMP_PASS" || -z "$EXTEND_NAME" || -z "$MAIL_TITLE" || -z "$MAIL_RECIPIENT" ]]
 then
-   echo "Syntax error\nUsage: $0 <host> <port> <user> <pass> <extend> <mail_title> <mail_recipient>"
+   echo -e "Syntax error\nUsage: $0 <host> <port> <user> <pass> <extend> <mail_title> <mail_recipient>"
    exit $NAGIOS_UNKNOWN
 fi
 
