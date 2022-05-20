@@ -12,11 +12,11 @@ SNMP_USER=$3
 SNMP_PASS=$4
 EXTEND_NAME=$5
 
-[ -z "$SNMP_HOST" -o -z "$SNMP_PORT" -o -z "$SNMP_USER" -o -z "$SNMP_PASS" -o -z "$EXTEND_NAME" ] && {
-   echo "Syntax error"
-   echo "Usage: $0 <host> <port> <user> <pass> <extend>"
+if [[ -z "$SNMP_HOST" || -z "$SNMP_PORT" || -z "$SNMP_USER" || -z "$SNMP_PASS" || -z "$EXTEND_NAME" ]]
+then
+   echo -e "Syntax error\nUsage: $0 <host> <port> <user> <pass> <extend>"
    exit $NAGIOS_UNKNOWN
-}
+fi
 
 cmd_result=$($SNMPGET -OQv -l authPriv -u $SNMP_USER -A $SNMP_PASS -X $SNMP_PASS $SNMP_HOST:$SNMP_PORT NET-SNMP-EXTEND-MIB::nsExtendResult.\"$EXTEND_NAME\")
 cmd_output=""
