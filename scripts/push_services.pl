@@ -62,7 +62,7 @@ sub send_req_to_nagios {
         my $json = shift;
         my $req = HTTP::Request->new('POST', $uri);
         $req->header('Content-Type' => 'application/json');
-        $req->header('Authorization' => 'Basic ' . encode_base64('nagios3:dupa.8'));
+        $req->header('Authorization' => 'Basic ' . encode_base64('<nagios_hosts>:<nagios_pass>'));
         $req->content($json);
 
         my $lwp = LWP::UserAgent->new();

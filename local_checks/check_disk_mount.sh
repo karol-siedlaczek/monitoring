@@ -24,7 +24,7 @@ do
   elif [[ -n $mountpoint ]]  # partition is mounted
   then
     output="${output}OK: /dev/$name mounted in $mountpoint\n"
-  else   # partition is not mounted
+  else  # partition is not mounted
     output="${output}CRITICAL: /dev/$name not mounted\n"
     exit_code=$CRITICAL
   fi

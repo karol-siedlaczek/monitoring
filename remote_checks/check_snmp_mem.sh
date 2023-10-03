@@ -1,12 +1,11 @@
 #!/bin/bash
 
-# Karol S. 2023
+# Karol Siedlaczek 2023
 
 SYS_AVAIL_OID=".1.3.6.1.4.1.2021.4.27.0" # MIB: memSysAvail.0
 TOTAL_REAL_OID=".1.3.6.1.4.1.2021.4.5.0" # MIB: memTotalReal.0
 AVAIL_SWAP_OID=".1.3.6.1.4.1.2021.4.4.0" # MIB: memAvailSwap.0
 TOTAL_SWAP_OID=".1.3.6.1.4.1.2021.4.3.0" # MIB: memTotalSwap.0
-SYS_UP_TIME_OID=".1.3.6.1.2.1.1.3.0"     # MIB: system.SysUpTime.0
 
 NAGIOS_OK=0
 NAGIOS_WARN=1
@@ -35,7 +34,7 @@ function HELP {
   echo "  -c=INT | INT,INT      Critical level for memory in percent, arg <INTEGER> only for available mem, <INTEGER>,<INTEGER> also for SWAP, default is $CRIT"
   echo "  -n                    No argument, enable nagios escape output with </br> at the end of line"
   echo "  -h                    Show this help message and exit"
-  exit 1
+  exit $NAGIOS_UNKNOWN
 }
 
 while getopts H:l:X:p:a:x:w:c:hn flag
@@ -54,16 +53,23 @@ do
   esac
 done
 
-UPTIME_RESULT=$(snmpget -O n -v 3 -l authPriv -u ${SNMP_USER} -a ${AUTH_PROTOCOL} -x ${PRIV_PROTOCOL} -A ${SNMP_PASSWORD} -X ${SNMP_PASSWORD} ${HOST_ADDRESS}:${SNMP_PORT} ${SYS_UP_TIME_OID})
-if [[ "$UPTIME_RESULT" != "${SYS_UP_TIME_OID}"* ]]
+if [[ -z "$HOST_ADDRESS" || -z "$SNMP_USER" || -z "$SNMP_PASSWORD" ]]
 then
-  echo "UNKNOWN: no response from remote host $HOST_ADDRESS"
-  exit $NAGIOS_UNKNOWN
+  echo -e "ERROR: usage $0 -H <HOST_ADDRESS> -l <SNMP_USER> -X <SNMP_PASSWORD>\n"
+  HELP
 fi
 
 if [[ $NAGIOS_OUTPUT = true ]]; then LINE_SEPARATOR="</br>"; fi
 
-SNMPGET_RESULT=($(snmpget -O qv -v 3 -l authPriv -u ${SNMP_USER} -a ${AUTH_PROTOCOL} -x ${PRIV_PROTOCOL} -A ${SNMP_PASSWORD} -X ${SNMP_PASSWORD} ${HOST_ADDRESS}:${SNMP_PORT} ${SYS_AVAIL_OID} ${TOTAL_REAL_OID} ${AVAIL_SWAP_OID} ${TOTAL_SWAP_OID} | sed 's/[kK][bB]//'))
+SNMPGET_RESULT=($(snmpget -O qUv -v 3 -l authPriv -u ${SNMP_USER} -a ${AUTH_PROTOCOL} -x ${PRIV_PROTOCOL} -A ${SNMP_PASSWORD} -X ${SNMP_PASSWORD} ${HOST_ADDRESS}:${SNMP_PORT} ${SYS_AVAIL_OID} ${TOTAL_REAL_OID} ${AVAIL_SWAP_OID} ${TOTAL_SWAP_OID}))
+SNMPGET_EXIT_CODE=$?
+
+if [ $SNMPGET_EXIT_CODE -gt 0 ]
+then
+  echo "ERROR: no response from remote host $HOST_ADDRESS, exit code is $SNMPGET_EXIT_CODE"
+  exit $NAGIOS_UNKNOWN
+fi
+
 MEM_AVAIL=${SNMPGET_RESULT[0]}
 MEM_TOTAL=${SNMPGET_RESULT[1]}
 MEM_WARN=$(echo $WARN | awk '{split($0,x,","); print x[1]}')
@@ -75,8 +81,8 @@ SWAP_CRIT=$(echo $CRIT | awk '{split($0,x,","); print x[2]}')
 
 if [[ $MEM_AVAIL == +([[:digit:]]) ]]
 then
-  MEM_USAGE=$(($MEM_TOTAL-$MEM_AVAIL))
-  MEM_USAGE_PERCENT=$(($MEM_USAGE*100/$MEM_TOTAL))
+  MEM_USAGE=$(($MEM_TOTAL - $MEM_AVAIL))
+  MEM_USAGE_PERCENT=$(($MEM_USAGE*100 / $MEM_TOTAL))
   if [[ $MEM_CRIT -lt $MEM_USAGE_PERCENT ]]
   then
     MSG="CRITICAL: Memory usage ${MEM_USAGE_PERCENT}% > ${MEM_CRIT}%${LINE_SEPARATOR}"
