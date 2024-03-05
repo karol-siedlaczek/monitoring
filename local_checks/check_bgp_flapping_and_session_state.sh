@@ -29,7 +29,7 @@ check_since_dates () {
                 then
                         sessions_flapped=$((sessions_flapped + 1))
                         if [ $curr_since_date_diff -lt 0 ]; then curr_since_date_diff=$(($curr_since_date_diff + 86400)); fi
-                        MSG="${MSG}<STATE_MARKER>: BGP session with ${ip_addr} address has change state ${curr_since_date_diff} seconds ago ($since_date)</br>"
+                        MSG="${MSG}<STATE_MARKER>: BGP session with ${ip_addr} address changed state ${curr_since_date_diff} seconds ago ($since_date)</br>"
                 fi
         done <<< "$bfd_sessions_state"
         if [ $sessions_num -eq $sessions_flapped ]
@@ -44,7 +44,7 @@ check_since_dates () {
 }
 
 bfd_sessions_state=$(birdc show bfd sessions | awk '($3=="Up" && NR > 3)')
-down_sessions=$(birdc show bfd sessions | awk '{if ($3!="Up" && NR > 3) {x == ""; for (i=6; i <= NF; i++) x= x $i " "; printf "BGP session with %s address is in %s state since %s</br>", $1, $3, $4 x}; x=""}')
+down_sessions=$(birdc show bfd sessions | awk '{if ($3!="Up" && NR > 3) {x == ""; for (i=6; i <= NF; i++) x= x $i " "; printf "CRITICAL: BGP session with %s address is in %s state since %s</br>", $1, $3, $4 x}; x=""}')
 
 if [ -z "$down_sessions" ]
 then
