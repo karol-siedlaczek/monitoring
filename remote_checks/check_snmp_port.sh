@@ -21,10 +21,11 @@ help() {
   exit 1
 }
 
-while getopts "H:I:P:X:l:" opt; do
+while getopts "H:I:P:X:l:p:" opt; do
   case $opt in
     H) HOST=$OPTARG ;;
     l) SNMP_USER=$OPTARG ;;
+    p) SNMP_PORT=$OPTARG ;;
     I) INTERFACE_IP=$OPTARG ;;
     P) PORT=$OPTARG ;;
     X) SNMP_PASSWORD=$OPTARG ;;
@@ -42,14 +43,14 @@ output_exit_code=$?
 
 if [ $output_exit_code -gt 0 ]
 then
-  echo "ERROR: no response from remote host $HOST, exit code is $output_exit_code"
+  echo "ERROR: No response from remote host $HOST, exit code is $output_exit_code"
   exit $EXIT_CODE
 fi
 
 if [[ "$VALUE" == *"listen"* ]]; then
-  echo "OK - Service is listening on $INTERFACE_IP:$PORT"
+  echo "OK: Listen on $INTERFACE_IP:$PORT"
   exit $NAGIOS_OK
 else
-  echo "CRITICAL - Service is not listening on $INTERFACE_IP:$PORT"
+  echo "CRITICAL: Not listening on $INTERFACE_IP:$PORT"
   exit $NAGIOS_CRIT
 fi
