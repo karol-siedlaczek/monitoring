@@ -15,6 +15,7 @@ NAGIOS_CRIT=2
 NAGIOS_UNKNOWN=3
 EXIT_CODE=$NAGIOS_UNKNOWN
 SNMP_PORT="161"
+SNMP_COMMUNITY="public"
 AUTH_PROTOCOL="SHA"
 PRIV_PROTOCOL="AES"
 NAGIOS_OUTPUT=false
@@ -37,6 +38,7 @@ function HELP {
   echo "  -l=SNMP_USER               SNMP v3 authentication user"
   echo "  -X=SNMP_PASSWD             SNMP v3 authentication passphrase and encryption passphrase"
   echo "  -p=SNMP_PORT               SNMP port, default is $SNMP_PORT"
+  echo "  -C=SNMP_COMMUNITY          SNMP v2 community, default is $SNMP_COMMUNITY"
   echo "  -a=AUTH_PROTOCOL           Authentication protocol, default is (MD5|SHA, default: $AUTH_PROTOCOL)"
   echo "  -x=PRIV_PROTOCOL           Priv protocol, default is (AES|DES, default: $PRIV_PROTOCOL)"
   echo "  -e=EXCLUDE_PATTERN         Regex pattern to exclude interfaces by name, state of these links will not be checked"
@@ -44,6 +46,7 @@ function HELP {
   echo "  -t=THRESHOLD_MINUTES       Max duration in minutes when interface may be in critical state, if interface is down since <MINUTES> error will not be raised"
   echo "  -w=WARN_SPEED_THRESHOLD    If interface speed is less than this value warning will be raised (Mb/s)"
   echo "  -c=CRIT_SPEED_THRESHOLD    If interface speed is less than this value critical will be raised (Mb/s)"
+  echo "  -M=MAX_OIDS                Define allowed count of OIDs in single snmpwalk or snmpget"
   echo "  -s                         Minimal output"
   echo "  -n                         No argument, enable nagios escape output with </br> at the end of line"
   echo "  -v                         Verbose output"
@@ -51,12 +54,13 @@ function HELP {
   exit $NAGIOS_UNKNOWN
 }
 
-while getopts H:l:X:p:a:x:e:m:t:w:c:nsvh flag
+while getopts H:l:X:C:p:a:x:e:m:t:w:c:M:nsvh flag
 do
   case "${flag}" in
     H) HOST_ADDRESS=${OPTARG};;
     l) SNMP_USER=${OPTARG};;
     X) SNMP_PASSWORD=${OPTARG};;
+    C) SNMP_COMMUNITY=${OPTARG};;
     p) SNMP_PORT=${OPTARG};;
     a) AUTH_PROTOCOL=${OPTARG};;
     x) PRIV_PROTOCOL=${OPTARG};;
@@ -65,6 +69,7 @@ do
     t) THRESHOLD_MIN=${OPTARG};;
     w) WARN=${OPTARG};;
     c) CRIT=${OPTARG};;
+    M) MAX_OIDS=${OPTARG};;
     s) MINIMAL_OUTPUT=true;;
     v) VERBOSE=true;;
     n) NAGIOS_OUTPUT=true;;
@@ -72,33 +77,40 @@ do
   esac
 done
 
-if [[ -z "$HOST_ADDRESS" || -z "$SNMP_USER" || -z "$SNMP_PASSWORD" ]]
+if [[ -z "$HOST_ADDRESS" ]]
 then
-  echo -e "ERROR: usage $0 -H <HOST_ADDRESS> -l <SNMP_USER> -X <SNMP_PASSWORD>\n"
+  echo -e "ERROR: Usage $0 -H <HOST_ADDRESS>\n"
   HELP
 elif [[ -n "$EXCLUDE_PATTERN" && -n "$MATCH_PATTERN" ]]
 then
-  echo -e "ERROR: args -m and -e are mutually exclusive\n"
+  echo -e "ERROR: Flags -m and -e are mutually exclusive\n"
   HELP
 elif [[ $CRIT -gt $WARN ]]
 then
-  echo -e "ERROR: crit ($CRIT) threshold to measure minimum link speed cannot be greater than warn ($WARN) threshold\n"
+  echo -e "ERROR: Critical ($CRIT) threshold to measure minimum link speed cannot be greater than warning ($WARN) threshold\n"
   HELP
 fi
 
-snmp_base_args="-O qtv -v 3 -l authPriv -u ${SNMP_USER} -a ${AUTH_PROTOCOL} -x ${PRIV_PROTOCOL} -A ${SNMP_PASSWORD} -X ${SNMP_PASSWORD} ${HOST_ADDRESS}:${SNMP_PORT}"
+if [[ -n "$SNMP_USER" ]]
+then
+  snmp_base_args="-O qtv -v 3 -l authPriv -u ${SNMP_USER} -a ${AUTH_PROTOCOL} -x ${PRIV_PROTOCOL} -A ${SNMP_PASSWORD} -X ${SNMP_PASSWORD} ${HOST_ADDRESS}:${SNMP_PORT}"
+else
+  snmp_base_args="-O qtv -v 2c -c ${SNMP_COMMUNITY} ${HOST_ADDRESS}:${SNMP_PORT}"
+fi
+
 link_indexes=($(snmpwalk ${snmp_base_args} ${IF_INDEX_OID}))
 output_exit_code=$?
 
 if [ $output_exit_code -gt 0 ]
 then
-  echo "ERROR: no response from remote host $HOST_ADDRESS, exit code is $output_exit_code"
+  echo "ERROR: No response from remote host $HOST_ADDRESS, exit code is $output_exit_code"
   exit $NAGIOS_UNKNOWN
 fi
 
 if [[ $NAGIOS_OUTPUT = true ]]; then LINE_SEPARATOR="</br>"; fi
 
 snmp_cmds=("snmpget ${snmp_base_args} ${SYS_UP_TIME_OID} ")
+
 oid_count=1
 
 for index in "${link_indexes[@]}" # prepare snmp command/s to prevent build snmpget bigger than $MAX_OIDS
@@ -136,18 +148,17 @@ do
   link_name=${snmp_output[0]}
   if [[ $EXCLUDE_PATTERN && $link_name =~ $EXCLUDE_PATTERN ]]
   then
-    if [[ -n $VERBOSE ]]; then echo "link $link_name excluded${LINE_SEPARATOR}"; fi
+    if [[ -n $VERBOSE ]]; then echo "Link $link_name excluded${LINE_SEPARATOR}"; fi
   elif [[ -z $MATCH_PATTERN || $link_name =~ $MATCH_PATTERN ]]
   then
     link_state=${snmp_output[1]}
     link_speed=${snmp_output[2]}
+    link_info="Link ${link_name} is ${link_state}"
 
     if [[ -n $WARN || -n $CRIT ]]  # add speed to output if thresholds to measure are given
-        then
-          link_info="link ${link_name} is ${link_state} [${link_speed} Mb/s]"
-        else
-          link_info="link ${link_name} is ${link_state}"
-        fi
+    then
+      link_info="${link_info} [${link_speed} Mb/s]"
+    fi
 
     if [[ "$link_state" != *"up"* ]]
     then
@@ -194,7 +205,7 @@ done
 
 if [ $links_ok -eq 0 ] && [ $links_not_ok -eq 0 ]
 then
-  echo "ERROR: all links has been excluded from output by /$EXCLUDE_PATTERN/ exclude pattern or not matched by /$MATCH_PATTERN/ match pattern"
+  echo "ERROR: All links has been excluded from output by /$EXCLUDE_PATTERN/ exclude pattern or not matched by /$MATCH_PATTERN/ match pattern"
   exit $NAGIOS_UNKNOWN
 fi
 
@@ -202,7 +213,7 @@ if [[ $MINIMAL_OUTPUT = true ]]
 then
   if [[ $links_not_ok -eq 0 ]]
   then
-    msg="OK: all links ok${LINE_SEPARATOR}${msg}"
+    msg="OK: All links ok${LINE_SEPARATOR}${msg}"
   else
     msg="${links_not_ok}/${#link_indexes[@]} links not ok${LINE_SEPARATOR}${msg}"
   fi
