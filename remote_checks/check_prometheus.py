@@ -82,7 +82,7 @@ if __name__ == "__main__":
             if exit_code == Nagios.OK:
                 print("OK: All targets are up and service is healthy")
             else:
-                print(msg[:-5] if args.nagiosOutput else msg[:-1])
+                print(msg[:-len(line_separator)])
             exit(exit_code)
         else:
             print("ERROR: No data returned")
