@@ -32,7 +32,7 @@ function timeticks_to_timestamp {
 
 function HELP {
   echo "DESCRIPTION"
-  echo -e "Check state of interfaces on remote host via SNMP v3"\\n
+  echo -e "Check state and speed of interfaces on remote host via SNMP v3 or v2"\\n
   echo "USAGE"
   echo "  -H=HOSTNAME                Remote host address"
   echo "  -l=SNMP_USER               SNMP v3 authentication user"
@@ -42,14 +42,15 @@ function HELP {
   echo "  -a=AUTH_PROTOCOL           Authentication protocol, default is (MD5|SHA, default: $AUTH_PROTOCOL)"
   echo "  -x=PRIV_PROTOCOL           Priv protocol, default is (AES|DES, default: $PRIV_PROTOCOL)"
   echo "  -e=EXCLUDE_PATTERN         Regex pattern to exclude interfaces by name, state of these links will not be checked"
-  echo "  -m=MATCH_PATTERN           Regex pattern to match interfaces by regex, only state of these links will be checked"
-  echo "  -t=THRESHOLD_MINUTES       Max duration in minutes when interface may be in critical state, if interface is down since <MINUTES> error will not be raised"
-  echo "  -w=WARN_SPEED_THRESHOLD    If interface speed is less than this value warning will be raised (Mb/s)"
-  echo "  -c=CRIT_SPEED_THRESHOLD    If interface speed is less than this value critical will be raised (Mb/s)"
+  echo "  -m=MATCH_PATTERN           Regex pattern to match interfaces by name, only state of these links will be checked"
+  echo "  -t=THRESHOLD_MINUTES       Max duration in minutes that interface may be in critical state (false-positive prevention when link is flapping), "
+  echo "                             e.g. if interface is DOWN since <THRESHOLD_MINUTES critical will not be raised"
+  echo "  -w=WARN_SPEED_THRESHOLD    Interface speed below this threshold will raise warning (Mb/s)"
+  echo "  -c=CRIT_SPEED_THRESHOLD    Interface speed below this threshold will raise critical (Mb/s)"
   echo "  -M=MAX_OIDS                Define allowed count of OIDs in single snmpwalk or snmpget"
   echo "  -s                         Minimal output"
-  echo "  -n                         No argument, enable nagios escape output with </br> at the end of line"
   echo "  -v                         Verbose output"
+  echo "  -n                         Enable nagios escape output with </br> at the end of line"
   echo "  -h                         Show this help message and exit"
   exit $NAGIOS_UNKNOWN
 }
