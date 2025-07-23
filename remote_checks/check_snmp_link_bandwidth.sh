@@ -56,7 +56,7 @@ function get_traffic_rate {
     local cached_octets=$2
     local seconds=$3
 
-    if [[ $current_octets -eq 0 && $cached_octets ]]; then
+    if [[ $current_octets -eq 0 && $cached_octets -eq 0 ]]; then
         echo "0 0 $KB_UNIT"
     else
         # Fallback if cache and current data are from the same timestamp
