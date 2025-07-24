@@ -140,7 +140,6 @@ elif [[ $WARN_OUT -gt $CRIT_OUT ]]; then
 elif [[ $WARN_IN -gt $CRIT_IN ]]; then
     echo -e "ERROR: Warning threshold ($WARN_IN%) for inbound link traffic cannot be greater than critical threshold ($CRIT_IN%)\nUse -h/--help to show help"
     exit $NAGIOS_UNKNOWN
-
 elif [[ $MAX_OIDS -le 0 || $MAX_OIDS -gt 128 ]]; then
     echo -e "ERROR: Max OIDs value must be between 1-128, current value is $MAX_OIDS\nUse -h/--help to show help"
     exit $NAGIOS_UNKNOWN
