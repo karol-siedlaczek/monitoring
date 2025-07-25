@@ -2,11 +2,12 @@
 
 # Karol Siedlaczek 2025
 
-IF_NAME_OID="1.3.6.1.2.1.31.1.1.1.1"          # IF-MIB::ifName.X
+IF_NAME_OID=".1.3.6.1.2.1.31.1.1.1.1"          # IF-MIB::ifName.X
 IF_INDEX_OID=".1.3.6.1.2.1.2.2.1.1"           # IF-MIB::ifIndex.X
 IF_OPER_STATUS_OID=".1.3.6.1.2.1.2.2.1.8"     # IF-MIB::ifOperStatus.X
 IF_IN_OCTETS_OID=".1.3.6.1.2.1.31.1.1.1.6"    # IF-MIB::isHCInOctets (Inbound traffic)
 IF_OUT_OCTETS_OID=".1.3.6.1.2.1.31.1.1.1.10"  # IF-MIB::isHCOutOctets (Outbound traffic)
+IF_HIGH_SPEED_OID=".1.3.6.1.2.1.31.1.1.1.15"  # IF-MIB::ifHighSpeed.X
 SYS_UP_TIME_OID=".1.3.6.1.2.1.1.3.0"          # MIB: system.SysUpTime.0
 
 NAGIOS_OK=0
@@ -23,11 +24,10 @@ NAGIOS_ESCAPE=false
 SHORT_OUTPUT=false
 LINE_SEPARATOR="\n"
 MAX_OIDS=128
-OIDS=("${IF_NAME_OID}" "${IF_OPER_STATUS_OID}" "${IF_IN_OCTETS_OID}" "${IF_OUT_OCTETS_OID}")
 
 function HELP {
     echo "USAGE:"
-    echo -e "$0 -H [IP_ADDRESS] -M/--max-bandwidth [INT] --warn-out [INT] --crit-out [INT] --warn-in [INT] --crit-in [INT] [OPTIONS...]\n"
+    echo -e "$0 -H [IP_ADDRESS] --warn-out [INT] --crit-out [INT] --warn-in [INT] --crit-in [INT] [OPTIONS...]\n"
     
     echo "DESCRIPTION:"
     echo -e "  Check state and utilization of interfaces (inbound/outbound traffic) on remote host via SNMP v3 or v2\n"
@@ -44,7 +44,8 @@ function HELP {
     echo "                              state of excluded links will not be checked"
     echo "  -m, --match REGEX          Regex pattern to match interfaces by name, "
     echo "                              only state of matched links will be checked"
-    echo "  -M, --max-bandwidth INT    Define max bandwidth in Mb/s for interface"
+    echo "  -M, --max-bandwidth INT    Define max bandwidth in Mb/s for interface, if not defined"
+    echo "                              default value will be taken from OID IF-MIB::ifHighSpeed.X"
     echo "  --warn-out (1-100)         Raise warning if outbound traffic exceeds this threshold (%)"
     echo "  --crit-out (1-100)         Raise critical if outbound traffic exceeds this threshold (%)"
     echo "  --warn-in (1-100)          Raise warning if inbound traffic exceeds this threshold (%)"
@@ -65,7 +66,7 @@ function get_traffic_rate {
     local seconds=$3
 
     if [[ $current_octets -eq 0 && $cached_octets -eq 0 ]]; then
-        echo "0 0 $KB_UNIT"
+        echo "0 0 $MB_UNIT"
     else
         # Fallback if cache and current data are from the same timestamp
         if [[ $seconds -eq 0 ]]; then
@@ -75,11 +76,11 @@ function get_traffic_rate {
         diff_as_bits=$((diff * 8))
         rate_kbps=$((diff_as_bits / $seconds / $UNIT_MULTIPLIER))
         rate_mbps=$((rate_kbps / $UNIT_MULTIPLIER))
-        
+
         if [[ $rate_kbps -ge $UNIT_MULTIPLIER ]]; then
-            echo "$rate_mbps $rate_mbps $MB_UNIT"
+            echo "$rate_mbps $rate_mbps $MB_UNIT"  
         else
-            echo "$rate_mbps $rate_kbps $KB_UNIT"            
+            echo "$rate_mbps 0.$rate_kbps $MB_UNIT"            
         fi
     fi
 }
@@ -117,16 +118,14 @@ done
 
 if [[ $BINARY_RESULT = true ]]; then
     UNIT_MULTIPLIER=1024
-    KB_UNIT="kib/s"
     MB_UNIT="Mib/s"
 else
     UNIT_MULTIPLIER=1000
-    KB_UNIT="kb/s"
     MB_UNIT="Mb/s"
 fi
 
-if [[ -z "$HOST_ADDRESS" || -z "$MAX_BANDWIDTH" || -z "$WARN_OUT" || -z "$CRIT_OUT" || -z "$WARN_IN" || -z "$CRIT_IN" ]]; then
-    echo -e "ERROR: Required arguments not defined: -H/--host, -M/--max-bandwidth, --warn-out, --crit-out, --warn-in, --crit-in\nUse -h/--help to show help"
+if [[ -z "$HOST_ADDRESS" || -z "$WARN_OUT" || -z "$CRIT_OUT" || -z "$WARN_IN" || -z "$CRIT_IN" ]]; then
+    echo -e "ERROR: Required arguments not defined: -H/--host, --warn-out, --crit-out, --warn-in, --crit-in\nUse -h/--help to show help"
     exit $NAGIOS_UNKNOWN
 elif [[ -n "$EXCLUDE_PATTERN" && -n "$MATCH_PATTERN" ]]; then
     echo -e "ERROR: Flags -m/--match and -e/--exclude are mutually exclusive\nUse -h/--help to show help"
@@ -140,6 +139,7 @@ elif [[ $WARN_OUT -gt $CRIT_OUT ]]; then
 elif [[ $WARN_IN -gt $CRIT_IN ]]; then
     echo -e "ERROR: Warning threshold ($WARN_IN%) for inbound link traffic cannot be greater than critical threshold ($CRIT_IN%)\nUse -h/--help to show help"
     exit $NAGIOS_UNKNOWN
+
 elif [[ $MAX_OIDS -le 0 || $MAX_OIDS -gt 128 ]]; then
     echo -e "ERROR: Max OIDs value must be between 1-128, current value is $MAX_OIDS\nUse -h/--help to show help"
     exit $NAGIOS_UNKNOWN
@@ -168,6 +168,12 @@ if [ $snmp_exit_code -gt 0 ]; then
 fi
 
 if [[ $NAGIOS_ESCAPE = true ]]; then LINE_SEPARATOR="</br>"; fi
+
+if [[ -z $MAX_BANDWIDTH ]]; then
+    OIDS=("${IF_NAME_OID}" "${IF_OPER_STATUS_OID}" "${IF_IN_OCTETS_OID}" "${IF_OUT_OCTETS_OID}" "${IF_HIGH_SPEED_OID}")
+else
+    OIDS=("${IF_NAME_OID}" "${IF_OPER_STATUS_OID}" "${IF_IN_OCTETS_OID}" "${IF_OUT_OCTETS_OID}")
+fi
 
 cache_file="/tmp/snmp_interface_bandwidth_$HOST_ADDRESS.cache"
 snmp_cmds=("snmpget $snmp_base_args $SYS_UP_TIME_OID ")
@@ -209,7 +215,7 @@ if [[ -n "$cache_data" ]]; then
 
     for index in "${link_indexes[@]}"; do # snmp_data structure: [(if_name_1, if_state_1, if_in_octets_1, if_out_octets_1) ... (if_name_n, if_state_n, if_in_traffic_n, if_out_traffic_n))
         link_ok=true
-        read link_name link_state link_in_octets link_out_octets <<< "${snmp_data[@]:$base_id:4}"
+        read link_name link_state link_in_octets link_out_octets link_speed <<< "${snmp_data[@]:$base_id:5}"
 
         if [[ $EXCLUDE_PATTERN && $link_name =~ $EXCLUDE_PATTERN ]]; then
             if [[ -n $VERBOSE ]]; then echo "Link $link_name excluded${LINE_SEPARATOR}"; fi
@@ -229,32 +235,44 @@ if [[ -n "$cache_data" ]]; then
                 
                 read in_rate_mbps in_formatted_rate in_rate_unit <<< "$(get_traffic_rate "$link_in_octets" "$cached_link_in_octets" "$seconds_since_cache_data")"
                 read out_rate_mbps out_formatted_rate out_rate_unit <<< "$(get_traffic_rate "$link_out_octets" "$cached_link_out_octets" "$seconds_since_cache_data")"
-                in_rate_mbps_percent=$((in_rate_mbps * 100 / MAX_BANDWIDTH))
-                out_rate_mbps_percent=$((out_rate_mbps * 100 / MAX_BANDWIDTH))
+
+                if [[ -z $MAX_BANDWIDTH ]]; then
+                    max_bandwidth=$link_speed
+                else
+                    max_bandwidth=$MAX_BANDWIDTH
+                fi
+                
+                if [[ $MAX_BANDWIDTH -gt 0 ]]; then
+                    in_rate_mbps_percent=$((in_rate_mbps * 100 / max_bandwidth))
+                    out_rate_mbps_percent=$((out_rate_mbps * 100 / max_bandwidth))
+                else
+                    in_rate_mbps_percent=0
+                    out_rate_mbps_percent=0
+                fi
 
                 if [[ $in_rate_mbps_percent -gt $CRIT_IN ]]; then
-                    msg="${msg}CRITICAL: Inbound traffic on $link_name link is $in_formatted_rate/$MAX_BANDWIDTH $in_rate_unit ($in_rate_mbps_percent% > $CRIT_IN%)$LINE_SEPARATOR"
+                    msg="${msg}CRITICAL: Inbound traffic on $link_name link is $in_formatted_rate/$max_bandwidth $in_rate_unit ($in_rate_mbps_percent% > $CRIT_IN%)$LINE_SEPARATOR"
                     link_ok=false
                     EXIT_CODE=$NAGIOS_CRIT
                 elif [[ $in_rate_mbps_percent -gt $WARN_IN ]]; then
-                    msg="${msg}WARNING: Inbound traffic on $link_name link is $in_formatted_rate/$MAX_BANDWIDTH $in_rate_unit ($in_rate_mbps_percent% > $WARN_IN%)$LINE_SEPARATOR"
+                    msg="${msg}WARNING: Inbound traffic on $link_name link is $in_formatted_rate/$max_bandwidth $in_rate_unit ($in_rate_mbps_percent% > $WARN_IN%)$LINE_SEPARATOR"
                     link_ok=false
                     if [[ $EXIT_CODE != $NAGIOS_CRIT ]]; then EXIT_CODE=$NAGIOS_WARN; fi
                 elif [[ $SHORT_OUTPUT = false ]]; then
-                    msg="${msg}OK: Inbound traffic on $link_name link is $in_formatted_rate $in_rate_unit ($in_rate_mbps_percent%)${LINE_SEPARATOR}"
+                    msg="${msg}OK: Inbound traffic on $link_name link is $in_formatted_rate/$max_bandwidth $in_rate_unit ($in_rate_mbps_percent%)${LINE_SEPARATOR}"
                     if [[ $EXIT_CODE != $NAGIOS_CRIT && $EXIT_CODE != $NAGIOS_WARN ]]; then EXIT_CODE=$NAGIOS_OK; fi
                 fi
 
                 if [[ $out_rate_mbps_percent -gt $CRIT_OUT ]]; then
-                    msg="${msg}CRITICAL: Outbound traffic on $link_name link is $out_formatted_rate/$MAX_BANDWIDTH $out_rate_unit ($out_rate_mbps_percent% > $CRIT_OUT%)$LINE_SEPARATOR"
+                    msg="${msg}CRITICAL: Outbound traffic on $link_name link is $out_formatted_rate/$max_bandwidth $out_rate_unit ($out_rate_mbps_percent% > $CRIT_OUT%)$LINE_SEPARATOR"
                     link_ok=false
                     EXIT_CODE=$NAGIOS_CRIT
                 elif [[ $out_rate_mbps_percent -gt $WARN_OUT ]]; then
-                    msg="${msg}WARNING: Outbound traffic on $link_name link is $out_formatted_rate/$MAX_BANDWIDTH $out_rate_unit ($out_rate_mbps_percent% > $WARN_OUT%)$LINE_SEPARATOR"
+                    msg="${msg}WARNING: Outbound traffic on $link_name link is $out_formatted_rate/$max_bandwidth $out_rate_unit ($out_rate_mbps_percent% > $WARN_OUT%)$LINE_SEPARATOR"
                     link_ok=false
                     if [[ $EXIT_CODE != $NAGIOS_CRIT ]]; then EXIT_CODE=$NAGIOS_WARN; fi
                 elif [[ $SHORT_OUTPUT = false ]]; then
-                    msg="${msg}OK: Outbound traffic on $link_name link is $out_formatted_rate $out_rate_unit ($out_rate_mbps_percent%)${LINE_SEPARATOR}"
+                    msg="${msg}OK: Outbound traffic on $link_name link is $out_formatted_rate/$max_bandwidth $out_rate_unit ($out_rate_mbps_percent%)${LINE_SEPARATOR}"
                     if [[ $EXIT_CODE != $NAGIOS_CRIT && $EXIT_CODE != $NAGIOS_WARN ]]; then EXIT_CODE=$NAGIOS_OK; fi
                 fi
 
@@ -296,7 +314,8 @@ else
     done
 
     echo -e "$new_cache_content" > $cache_file
-    echo "Cache file not found, script will re-execute"
+    echo "Cache file not found, script will re-execute after 10 seconds"
+    sleep 10
     exec "$0" "${ARGS[@]}"
 fi
 
