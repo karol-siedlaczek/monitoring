@@ -7,8 +7,7 @@ NAGIOS_UNKNOWN=3
 EXIT_CODE=$NAGIOS_OK
 DELIMITER="\n"
 
-while getopts n flag
-do
+while getopts n flag; do
 case "${flag}" in
     n) NAGIOS_OUTPUT=true;;
 esac
