@@ -28,10 +28,10 @@ MAX_OIDS=128
 function HELP {
     echo "USAGE:"
     echo -e "$0 -H [IP_ADDRESS] --warn-out [INT] --crit-out [INT] --warn-in [INT] --crit-in [INT] [OPTIONS...]\n"
-    
+
     echo "DESCRIPTION:"
     echo -e "  Check state and utilization of interfaces (inbound/outbound traffic) on remote host via SNMP v3 or v2\n"
-    
+
     echo "OPTIONS:"
     echo "  -H, --host IP_ADDRESS      Remote host address"
     echo "  -l, --user STR             SNMP v3 authentication user"
@@ -66,22 +66,14 @@ function get_traffic_rate {
     local seconds=$3
 
     if [[ $current_octets -eq 0 && $cached_octets -eq 0 ]]; then
-        echo "0 0 $MB_UNIT"
+        echo "0"
     else
         # Fallback if cache and current data are from the same timestamp
-        if [[ $seconds -eq 0 ]]; then
-            seconds=1
-        fi
-        diff=$((current_octets - cached_octets))
-        diff_as_bits=$((diff * 8))
-        rate_kbps=$((diff_as_bits / $seconds / $UNIT_MULTIPLIER))
-        rate_mbps=$((rate_kbps / $UNIT_MULTIPLIER))
+        if [[ $seconds -eq 0 ]]; then seconds=1; fi
 
-        if [[ $rate_kbps -ge $UNIT_MULTIPLIER ]]; then
-            echo "$rate_mbps $rate_mbps $MB_UNIT"  
-        else
-            echo "$rate_mbps 0.$rate_kbps $MB_UNIT"            
-        fi
+        diff_as_bits=$(((current_octets - cached_octets) * 8))
+        rate_mbps=$((diff_as_bits / $seconds / $UNIT_MULTIPLIER / $UNIT_MULTIPLIER))
+        echo "$rate_mbps"
     fi
 }
 
@@ -139,7 +131,9 @@ elif [[ $WARN_OUT -gt $CRIT_OUT ]]; then
 elif [[ $WARN_IN -gt $CRIT_IN ]]; then
     echo -e "ERROR: Warning threshold ($WARN_IN%) for inbound link traffic cannot be greater than critical threshold ($CRIT_IN%)\nUse -h/--help to show help"
     exit $NAGIOS_UNKNOWN
-
+elif [[ $MAX_BANDWIDTH && $MAX_BANDWIDTH -le 0 ]]; then
+    echo -e "ERROR: Max bandwidth set by -M/--max-bandwidth must be greater than 0\nUse -h/--help to show help"
+    exit $NAGIOS_UNKNOWN
 elif [[ $MAX_OIDS -le 0 || $MAX_OIDS -gt 128 ]]; then
     echo -e "ERROR: Max OIDs value must be between 1-128, current value is $MAX_OIDS\nUse -h/--help to show help"
     exit $NAGIOS_UNKNOWN
@@ -159,31 +153,31 @@ else
     snmp_base_args="-O qtv -v 2c -c $SNMP_COMMUNITY $HOST_ADDRESS:$SNMP_PORT"
 fi
 
-link_indexes=($(snmpwalk ${snmp_base_args} ${IF_INDEX_OID}))
-snmp_exit_code=$?
+snmp_output=$(snmpwalk ${snmp_base_args} ${IF_INDEX_OID} 2>&1)
 
-if [ $snmp_exit_code -gt 0 ]; then
-    echo "ERROR: No response from remote host $HOST_ADDRESS, exit code is $snmp_exit_code"
+if [ $? -gt 0 ]; then
+    echo "ERROR: $snmp_output"
     exit $NAGIOS_UNKNOWN
 fi
+
+mapfile -t link_indexes <<< "$snmp_output"
 
 if [[ $NAGIOS_ESCAPE = true ]]; then LINE_SEPARATOR="</br>"; fi
 
 if [[ -z $MAX_BANDWIDTH ]]; then
-    OIDS=("${IF_NAME_OID}" "${IF_OPER_STATUS_OID}" "${IF_IN_OCTETS_OID}" "${IF_OUT_OCTETS_OID}" "${IF_HIGH_SPEED_OID}")
+    oids=("${IF_NAME_OID}" "${IF_OPER_STATUS_OID}" "${IF_IN_OCTETS_OID}" "${IF_OUT_OCTETS_OID}" "${IF_HIGH_SPEED_OID}")
 else
-    OIDS=("${IF_NAME_OID}" "${IF_OPER_STATUS_OID}" "${IF_IN_OCTETS_OID}" "${IF_OUT_OCTETS_OID}")
+    oids=("${IF_NAME_OID}" "${IF_OPER_STATUS_OID}" "${IF_IN_OCTETS_OID}" "${IF_OUT_OCTETS_OID}")
 fi
 
-cache_file="/tmp/snmp_interface_bandwidth_$HOST_ADDRESS.cache"
 snmp_cmds=("snmpget $snmp_base_args $SYS_UP_TIME_OID ")
 oid_count=1
 
 for index in "${link_indexes[@]}"; do # Prepare snmp command/s to prevent build snmpget bigger than $MAX_OIDS
-    for oid in "${OIDS[@]}"; do
+    for oid in "${oids[@]}"; do
         snmp_cmds[${#snmp_cmds[@]} - 1]+="$oid.$index "
         oid_count=$((oid_count + 1))
-        
+
         if [ $(( oid_count % MAX_OIDS)) == 0 ]; then
             snmp_cmds+=("snmpget $snmp_base_args ")
         fi
@@ -191,24 +185,29 @@ for index in "${link_indexes[@]}"; do # Prepare snmp command/s to prevent build 
 done
 
 for cmd in "${snmp_cmds[@]}"; do
-    if [ -z "$snmp_data" ]; then
-        mapfile -t snmp_data <<< $($cmd)
+    if output=$($cmd 2>&1); then
+        if [ -z "$snmp_data" ]; then
+            mapfile -t snmp_data <<< "$output"
+        else
+            mapfile -t -O "${#snmp_data[@]}" snmp_data <<< "$output"
+        fi
     else
-        mapfile -t -O "${#snmp_data[@]}" snmp_data <<< $($cmd)
+        echo "ERROR: $output Check if max OIDs value is not too big ($MAX_OIDS)"
+        exit $NAGIOS_CRIT
     fi
 done
 
 sys_uptime_timeticks=${snmp_data[0]}
 unset snmp_data[0]
 snmp_data=("${snmp_data[@]}")
-
-cache_data=$(< $cache_file)
 new_cache_content="$sys_uptime_timeticks\n"
-msg=""
+cache_file="/tmp/snmp_interface_bandwidth_$HOST_ADDRESS.cache"
 
-if [[ -n "$cache_data" ]]; then
+if [[ -f "$cache_file" ]]; then
+    cache_data=$(< $cache_file)
     cached_sys_uptime_timeticks=$(awk 'NR==1{print; exit}' <<< "$cache_data")
 
+    msg=""
     links_not_ok=0
     links_ok=0
     base_id=0
@@ -233,16 +232,16 @@ if [[ -n "$cache_data" ]]; then
                 # Convert timeticks to seconds, 100 timeticks is 1 second
                 seconds_since_cache_data=$(((sys_uptime_timeticks - cached_sys_uptime_timeticks) / 100))
                 
-                read in_rate_mbps in_formatted_rate in_rate_unit <<< "$(get_traffic_rate "$link_in_octets" "$cached_link_in_octets" "$seconds_since_cache_data")"
-                read out_rate_mbps out_formatted_rate out_rate_unit <<< "$(get_traffic_rate "$link_out_octets" "$cached_link_out_octets" "$seconds_since_cache_data")"
+                in_rate_mbps=$(get_traffic_rate "$link_in_octets" "$cached_link_in_octets" "$seconds_since_cache_data")
+                out_rate_mbps=$(get_traffic_rate "$link_out_octets" "$cached_link_out_octets" "$seconds_since_cache_data")
 
                 if [[ -z $MAX_BANDWIDTH ]]; then
                     max_bandwidth=$link_speed
                 else
                     max_bandwidth=$MAX_BANDWIDTH
                 fi
-                
-                if [[ $MAX_BANDWIDTH -gt 0 ]]; then
+
+                if [[ $max_bandwidth -gt 0 ]]; then
                     in_rate_mbps_percent=$((in_rate_mbps * 100 / max_bandwidth))
                     out_rate_mbps_percent=$((out_rate_mbps * 100 / max_bandwidth))
                 else
@@ -251,28 +250,28 @@ if [[ -n "$cache_data" ]]; then
                 fi
 
                 if [[ $in_rate_mbps_percent -gt $CRIT_IN ]]; then
-                    msg="${msg}CRITICAL: Inbound traffic on $link_name link is $in_formatted_rate/$max_bandwidth $in_rate_unit ($in_rate_mbps_percent% > $CRIT_IN%)$LINE_SEPARATOR"
+                    msg="${msg}CRITICAL: Inbound traffic on $link_name link is $in_rate_mbps/$max_bandwidth $MB_UNIT ($in_rate_mbps_percent% > $CRIT_IN%)$LINE_SEPARATOR"
                     link_ok=false
                     EXIT_CODE=$NAGIOS_CRIT
                 elif [[ $in_rate_mbps_percent -gt $WARN_IN ]]; then
-                    msg="${msg}WARNING: Inbound traffic on $link_name link is $in_formatted_rate/$max_bandwidth $in_rate_unit ($in_rate_mbps_percent% > $WARN_IN%)$LINE_SEPARATOR"
+                    msg="${msg}WARNING: Inbound traffic on $link_name link is $in_rate_mbps/$max_bandwidth $MB_UNIT ($in_rate_mbps_percent% > $WARN_IN%)$LINE_SEPARATOR"
                     link_ok=false
                     if [[ $EXIT_CODE != $NAGIOS_CRIT ]]; then EXIT_CODE=$NAGIOS_WARN; fi
                 elif [[ $SHORT_OUTPUT = false ]]; then
-                    msg="${msg}OK: Inbound traffic on $link_name link is $in_formatted_rate/$max_bandwidth $in_rate_unit ($in_rate_mbps_percent%)${LINE_SEPARATOR}"
+                    msg="${msg}OK: Inbound traffic on $link_name link is $in_rate_mbps/$max_bandwidth $MB_UNIT ($in_rate_mbps_percent%)$LINE_SEPARATOR"
                     if [[ $EXIT_CODE != $NAGIOS_CRIT && $EXIT_CODE != $NAGIOS_WARN ]]; then EXIT_CODE=$NAGIOS_OK; fi
                 fi
 
                 if [[ $out_rate_mbps_percent -gt $CRIT_OUT ]]; then
-                    msg="${msg}CRITICAL: Outbound traffic on $link_name link is $out_formatted_rate/$max_bandwidth $out_rate_unit ($out_rate_mbps_percent% > $CRIT_OUT%)$LINE_SEPARATOR"
+                    msg="${msg}CRITICAL: Outbound traffic on $link_name link is $out_rate_mbps/$max_bandwidth $MB_UNIT ($out_rate_mbps_percent% > $CRIT_OUT%)$LINE_SEPARATOR"
                     link_ok=false
                     EXIT_CODE=$NAGIOS_CRIT
                 elif [[ $out_rate_mbps_percent -gt $WARN_OUT ]]; then
-                    msg="${msg}WARNING: Outbound traffic on $link_name link is $out_formatted_rate/$max_bandwidth $out_rate_unit ($out_rate_mbps_percent% > $WARN_OUT%)$LINE_SEPARATOR"
+                    msg="${msg}WARNING: Outbound traffic on $link_name link is $out_rate_mbps/$max_bandwidth $MB_UNIT ($out_rate_mbps_percent% > $WARN_OUT%)$LINE_SEPARATOR"
                     link_ok=false
                     if [[ $EXIT_CODE != $NAGIOS_CRIT ]]; then EXIT_CODE=$NAGIOS_WARN; fi
                 elif [[ $SHORT_OUTPUT = false ]]; then
-                    msg="${msg}OK: Outbound traffic on $link_name link is $out_formatted_rate/$max_bandwidth $out_rate_unit ($out_rate_mbps_percent%)${LINE_SEPARATOR}"
+                    msg="${msg}OK: Outbound traffic on $link_name link is $out_rate_mbps/$max_bandwidth $MB_UNIT ($out_rate_mbps_percent%)$LINE_SEPARATOR"
                     if [[ $EXIT_CODE != $NAGIOS_CRIT && $EXIT_CODE != $NAGIOS_WARN ]]; then EXIT_CODE=$NAGIOS_OK; fi
                 fi
 
@@ -285,11 +284,11 @@ if [[ -n "$cache_data" ]]; then
         else
             if [[ -n $VERBOSE ]]; then echo "Link $link_name not matched by pattern"; fi
         fi
-        
+
         new_cache_content+="$index $link_name $link_state $link_in_octets $link_out_octets\n"
-        base_id=$((base_id + ${#OIDS[@]}))
+        base_id=$((base_id + ${#oids[@]}))
     done
-    
+
     echo -e "$new_cache_content" > $cache_file
 
     if [ $links_ok -eq 0 ] && [ $links_not_ok -eq 0 ]; then
@@ -310,7 +309,7 @@ else
     for index in "${link_indexes[@]}"; do
         read link_name link_state link_in_octets link_out_octets <<< "${snmp_data[@]:$base_id:4}"
         new_cache_content+="$index $link_name $link_state $link_in_octets $link_out_octets\n"
-        base_id=$((base_id + ${#OIDS[@]}))
+        base_id=$((base_id + ${#oids[@]}))
     done
 
     echo -e "$new_cache_content" > $cache_file
