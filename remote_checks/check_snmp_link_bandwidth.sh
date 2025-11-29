@@ -2,7 +2,7 @@
 
 # Karol Siedlaczek 2025
 
-IF_NAME_OID=".1.3.6.1.2.1.31.1.1.1.1"          # IF-MIB::ifName.X
+IF_NAME_OID=".1.3.6.1.2.1.31.1.1.1.1"         # IF-MIB::ifName.X
 IF_INDEX_OID=".1.3.6.1.2.1.2.2.1.1"           # IF-MIB::ifIndex.X
 IF_OPER_STATUS_OID=".1.3.6.1.2.1.2.2.1.8"     # IF-MIB::ifOperStatus.X
 IF_IN_OCTETS_OID=".1.3.6.1.2.1.31.1.1.1.6"    # IF-MIB::isHCInOctets (Inbound traffic)
