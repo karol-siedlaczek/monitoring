@@ -1,5 +1,7 @@
 #!/bin/bash
 
+# Karol Siedlaczek 2024-2025
+
 NAGIOS_OK=0
 NAGIOS_WARN=1
 NAGIOS_CRIT=2
@@ -31,10 +33,10 @@ slave_sql=$(echo "$slave_status" | awk -F ': ' '/Slave_SQL_Running:/ {print $2}'
 master_log=$(echo "$slave_status" | awk -F ': ' '/ Master_Log_File:/ {print $2}')
 relay_log=$(echo "$slave_status" | awk -F ': ' '/Relay_Master_Log_File:/ {print $2}')
 
-if [ $seconds_behind -gt 60 ]; then
+if [[ "$seconds_behind" == "NULL" ]] || [[ -z "$seconds_behind" ]] || (( seconds_behind > 60 )); then
     state="CRITICAL"
     EXIT_CODE=$NAGIOS_CRIT
-elif [ $seconds_behind -gt 30 ]; then
+elif (( seconds_behind > 30 )); then
     state="WARNING"
     EXIT_CODE=$NAGIOS_WARN
 else
@@ -59,7 +61,7 @@ else
     state="OK"
 fi
 
-msg="${msg}$state: Slave SQL running: $slave_io$DELIMITER"
+msg="${msg}$state: Slave SQL running: $slave_sql$DELIMITER"
 
 if [ $master_log != $relay_log ]; then
     msg="${msg}WARNING: Master log file mismatch $master_log (master) != $relay_log (relay)"
