@@ -1,5 +1,7 @@
 #!/bin/bash
 
+# Karol Siedlaczek 2023
+
 NAGIOS_OK=0
 NAGIOS_WARN=1
 NAGIOS_CRIT=2
