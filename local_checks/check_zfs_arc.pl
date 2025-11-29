@@ -1,10 +1,10 @@
 #!/usr/bin/perl
 
+# Karol Siedlaczek 2025
+
 use strict;
 use warnings;
 use Getopt::Long;
-
-# Karol Siedlaczek 2025
 
 my $nagios_ok = 0;
 my $nagios_warn = 1;
