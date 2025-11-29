@@ -1,5 +1,7 @@
 #!/bin/bash
 
+# Karol Siedlaczek 2025
+
 WARNING=80
 CRITICAL=90
 
