@@ -5,6 +5,7 @@
 use strict;
 use warnings;
 use Getopt::Long;
+Getopt::Long::Configure("no_ignore_case");
 
 my $nagios_ok = 0;
 my $nagios_warn = 1;
@@ -42,14 +43,12 @@ unless (defined $miss_ratio_warn && defined $miss_ratio_crit) {
 }
 
 $eol_char = "</br>" if ($nagios_output == 1);
-my $status;
-my @lines = `arc_summary -s arc`;
+my $status = "UNSUPPORTED";
+my @lines = `arc_summary -s arc 2>/dev/null`;
 
 foreach my $line (@lines) {
-    chomp($line);
-    if ($line =~ /ARC status/) {
-        my @fields = split(/\s+/, $line);
-        $status = $fields[2];
+    if ($line =~ /ARC status\s*:?\s*(\S*)/i) {
+        $status = $1 || "UNSUPPORTED";
         last;
     }
 }
@@ -73,14 +72,17 @@ my $miss_ratio = $total_misses / $total_accesses;
 my $total_accesses_mb = $total_accesses / 1000 / 1000;
 my $total_misses_mb = $total_misses / 1000 / 1000;
 
-if ($status ne "HEALTHY") {
-    $message .= sprintf("CRITICAL: ARC status is '%s'", $status);
-    $exit_code = $nagios_crit;
+# In some versions arc_status reports overall status e.g. "HEALTHY", but not always! So keep below code as a fallback
+unless ($status eq "UNSUPPORTED") {
+    if ($status eq "HEALTHY") {
+        $message .= "OK: ARC status is HEALTHY";
+    }
+    else {
+        $message .= "WARNING: ARC status is '$status'";
+        $exit_code = $nagios_crit;
+    }
+    $message .= $eol_char;
 }
-else {
-    $message .= sprintf("OK: ARC status is '%s'", $status);
-}
-$message .= $eol_char;
 
 if ($miss_ratio > $miss_ratio_crit / 100) {
     $message .= sprintf(
