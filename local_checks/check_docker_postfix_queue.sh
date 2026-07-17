@@ -18,7 +18,7 @@ function HELP {
     exit $CODE_UNKNOWN
 }
 
-while getopts w:c:n flag; do
+while getopts w:c:C flag; do
 case "${flag}" in
     w) WARN=${OPTARG};;
     c) CRIT=${OPTARG};;
