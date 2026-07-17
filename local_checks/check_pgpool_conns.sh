@@ -8,7 +8,7 @@ EXIT_CODE=$CODE_OK
 
 function HELP {
     echo "DESCRIPTION"
-    echo -e "Check connections in MySQL\n"
+    echo -e "Check child process (connection) usage in pgpool\n"
 
     echo "USAGE"
     echo "  -w=INT    Warning level for connections in percent (required)"
@@ -17,7 +17,7 @@ function HELP {
     exit $CODE_UNKNOWN
 }
 
-while getopts w:c:n flag; do
+while getopts w:c:h flag; do
 case "${flag}" in
     w) WARN=${OPTARG};;
     c) CRIT=${OPTARG};;
@@ -29,19 +29,21 @@ if [[ -z $WARN || -z $CRIT ]]; then
     HELP
 fi
 
-max_connections=$(mysql -u root -e "show variables like 'max_connections'\G;")
-if [ $? -gt 0 ]; then
-    echo $max_connections
+if ! pgrep -x pgpool > /dev/null; then
+    echo "CRITICAL: pgpool process not running"
     exit $CODE_CRIT
 fi
-max_connections=$(echo "$max_connections" | awk -F ': ' '/Value:/ {print $2}')
 
-connections=$(mysql -e "show status where \`variable_name\` in ('Threads_connected')\G;")
-if [ $? -gt 0 ]; then
-    echo $connections
-    exit $CODE_CRIT
+handlers=$(ps -eo args= | grep -E '^pgpool: ' | grep -Ev 'PCP:|worker process|health check|watchdog|logger|follow child|pcp child|main process')
+
+max_connections=$(echo "$handlers" | grep -c .)
+if [[ $max_connections -eq 0 ]]; then
+    echo "UNKNOWN: No pgpool child processes found"
+    exit $CODE_UNKNOWN
 fi
-connections=$(echo "$connections" | awk -F ': ' '/Value:/ {print $2}')
+
+idle_connections=$(echo "$handlers" | grep -c 'wait for connection')
+connections=$((max_connections - idle_connections))
 
 connections_percentage=$((connections * 100 / max_connections))
 

@@ -11,9 +11,10 @@ function HELP {
     echo -e "Check Postfix mail queue size\n"
 
     echo "USAGE"
-    echo "  -w=INT    Warning level for messages in queue (required)"
-    echo "  -c=INT    Critical level for messages in queue (required)"
-    echo "  -h        Show this help message and exit"
+    echo "  -w=INT      Warning level for messages in queue (required)"
+    echo "  -c=INT      Critical level for messages in queue (required)"
+    echo "  -C=STRING   Docker container name"
+    echo "  -h          Show this help message and exit"
     exit $CODE_UNKNOWN
 }
 
@@ -21,15 +22,16 @@ while getopts w:c:n flag; do
 case "${flag}" in
     w) WARN=${OPTARG};;
     c) CRIT=${OPTARG};;
+    C) CONTAINER=${OPTARG};;
     *) HELP;;
 esac
 done
 
-if [[ -z $WARN || -z $CRIT ]]; then
+if [[ -z $WARN || -z $CRIT || -z $CONTAINER]]; then
     HELP
 fi
 
-queue_size=$(mailq | egrep -c '^[A-F0-9]{10}')
+queue_size=$(docker exec $CONTAINER mailq | egrep -c '^[A-F0-9]{10}')
 
 if [ -z $queue_size ]; then
     msg="UNKNOWN: Cannot determine mail queue size"

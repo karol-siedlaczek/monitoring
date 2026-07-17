@@ -1,8 +1,8 @@
 #!/bin/bash
 
-# check if partition is mounted by uuid
+# Checks if partition is mounted by uuid
 
-# nagios exit codes
+# Nagios exit codes
 OK=0
 WARN=1
 CRITICAL=2
@@ -14,17 +14,17 @@ for uuid in "$@"
 do
   mountpoint=$(lsblk -o MOUNTPOINT "/dev/disk/by-uuid/$uuid" | awk 'NR==2')
   name=$(lsblk -o NAME "/dev/disk/by-uuid/$uuid" | awk 'NR==2')
-  if [ -z $name ]  # partition not found
+  if [ -z $name ] # Partition not found
   then
     output="${output}UNKNOWN: $uuid not a block device\n"
     if [ $exit_code != $CRITICAL ]
     then
       exit_code=$UNKNOWN
     fi
-  elif [[ -n $mountpoint ]]  # partition is mounted
+  elif [[ -n $mountpoint ]] # Partition is mounted
   then
     output="${output}OK: /dev/$name mounted in $mountpoint\n"
-  else  # partition is not mounted
+  else  # Partition is not mounted
     output="${output}CRITICAL: /dev/$name not mounted\n"
     exit_code=$CRITICAL
   fi

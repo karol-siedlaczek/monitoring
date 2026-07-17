@@ -1,13 +1,12 @@
 #!/bin/bash
 
-# Karol Siedlaczek 2025
+CODE_OK=0
+CODE_WARN=1
+CODE_CRIT=2
+CODE_UNKNOWN=3
+EXIT_CODE=$CODE_UNKNOWN
 
-NAGIOS_OK=0
-NAGIOS_WARN=1
-NAGIOS_CRIT=2
-NAGIOS_UNKNOWN=3
-EXIT_CODE=$NAGIOS_UNKNOWN
-
+# TODO dmesg: unrecognized option '--since' 
 # tmp grep
 GREP_OUT="\(Mounting\|was not properly dismounted\|Trying to mount\|DMA limited to\|Filesystem is not clean\|out of memory in start\|GEOM_\|logical blocks\|physical blocks\|Write Protect\|Mode Sense\|Write cache:\|Attached SCSI\)"
 
@@ -53,11 +52,11 @@ exit_code=$?
 if [ $exit_code -gt 0 ]
 then
     echo "ERROR: Unknown exit code $exit_code"
-    exit $NAGIOS_UNKNOWN
+    exit $CODE_UNKNOWN
 elif [ -z "$output" ]
 then
     echo "OK: Not found any $levels in dmesg since $since_date"
-    EXIT_CODE=$NAGIOS_OK
+    EXIT_CODE=$CODE_OK
 else
     count=(${#output[@]})
     msg="Found $count msg since $since_date in dmesg"
@@ -65,14 +64,14 @@ else
     if [ $count -ge $crit ]
     then
       msg="CRITICAL: ${msg} (>$crit)"
-      EXIT_CODE=$NAGIOS_CRIT
+      EXIT_CODE=$CODE_CRIT
     elif [ $count -ge $warn ]
     then
-      msg="WARNING: ${msg} (>$crit)"
-      EXIT_CODE=$NAGIOS_WARN
+      msg="WARNING: ${msg} (>$warn)"
+      EXIT_CODE=$CODE_WARN
     else
       msg="OK: ${msg} (<$warn)"
-      EXIT_CODE=$NAGIOS_OK
+      EXIT_CODE=$CODE_OK
     fi
 
     for i in "${output[@]}"

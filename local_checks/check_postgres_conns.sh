@@ -6,9 +6,11 @@ CODE_CRIT=2
 CODE_UNKNOWN=3
 EXIT_CODE=$CODE_OK
 
+PG_OS_USER=postgres
+
 function HELP {
     echo "DESCRIPTION"
-    echo -e "Check connections in MySQL\n"
+    echo -e "Check connections in PostgreSQL\n"
 
     echo "USAGE"
     echo "  -w=INT    Warning level for connections in percent (required)"
@@ -17,7 +19,7 @@ function HELP {
     exit $CODE_UNKNOWN
 }
 
-while getopts w:c:n flag; do
+while getopts w:c:h flag; do
 case "${flag}" in
     w) WARN=${OPTARG};;
     c) CRIT=${OPTARG};;
@@ -29,19 +31,21 @@ if [[ -z $WARN || -z $CRIT ]]; then
     HELP
 fi
 
-max_connections=$(mysql -u root -e "show variables like 'max_connections'\G;")
-if [ $? -gt 0 ]; then
-    echo $max_connections
-    exit $CODE_CRIT
-fi
-max_connections=$(echo "$max_connections" | awk -F ': ' '/Value:/ {print $2}')
+cd / || exit $CODE_UNKNOWN
 
-connections=$(mysql -e "show status where \`variable_name\` in ('Threads_connected')\G;")
-if [ $? -gt 0 ]; then
-    echo $connections
+PSQL=(runuser -u "$PG_OS_USER" -- psql -At -d postgres)
+
+max_connections=$("${PSQL[@]}" -c "SHOW max_connections;" 2>&1)
+if ! [[ $max_connections =~ ^[0-9]+$ ]]; then
+    echo "CRITICAL: $max_connections"
     exit $CODE_CRIT
 fi
-connections=$(echo "$connections" | awk -F ': ' '/Value:/ {print $2}')
+
+connections=$("${PSQL[@]}" -c "SELECT count(*) FROM pg_stat_activity WHERE backend_type = 'client backend';" 2>&1)
+if ! [[ $connections =~ ^[0-9]+$ ]]; then
+    echo "CRITICAL: $connections"
+    exit $CODE_CRIT
+fi
 
 connections_percentage=$((connections * 100 / max_connections))
 

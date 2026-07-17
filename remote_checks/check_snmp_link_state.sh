@@ -181,16 +181,16 @@ do
     elif [[ -n $CRIT && $link_speed -lt $CRIT ]]
     then
       EXIT_CODE=$NAGIOS_CRIT
-      msg="${msg}CRITICAL: ${link_info} (speed < ${CRIT} Mb/s)${LINE_SEPARATOR}"
+      msg="${msg}CRITICAL: ${link_info} (crit_threshold = ${CRIT} Mb/s)${LINE_SEPARATOR}"
       links_not_ok=$((links_not_ok + 1))
     elif [[ -n $WARN && $link_speed -lt $WARN ]]
     then
       if [[ $EXIT_CODE != $NAGIOS_CRIT ]]; then EXIT_CODE=$NAGIOS_WARN; fi
-      msg="${msg}WARNING: ${link_info} (speed < ${WARN} Mb/s)${LINE_SEPARATOR}"
+      msg="${msg}WARNING: ${link_info} (warn_threshold = ${WARN} Mb/s)${LINE_SEPARATOR}"
       links_not_ok=$((links_not_ok + 1))
     else
       if [[ $EXIT_CODE != $NAGIOS_CRIT && $EXIT_CODE != $NAGIOS_WARN ]]; then EXIT_CODE=$NAGIOS_OK; fi
-      if [[ $MINIMAL_OUTPUT = false ]]; then msg="${msg}OK: $link_info${LINE_SEPARATOR}"; fi
+      if [[ $MINIMAL_OUTPUT = false ]]; then msg="${msg}OK: $link_info (>= ${WARN} Mb/s)${LINE_SEPARATOR}"; fi
       links_ok=$((links_ok + 1))
     fi
   else

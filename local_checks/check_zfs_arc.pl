@@ -1,7 +1,5 @@
 #!/usr/bin/perl
 
-# Karol Siedlaczek 2025
-
 use strict;
 use warnings;
 use Getopt::Long;
@@ -66,8 +64,9 @@ while (<$fh>) {
 close($fh);
 
 my $total_hits = $arc{'demand_data_hits'} + $arc{'demand_metadata_hits'} + $arc{'prefetch_data_hits'} + $arc{'prefetch_metadata_hits'};
+my $total_iohits = $arc{'demand_data_iohits'} + $arc{'demand_metadata_iohits'} + $arc{'prefetch_data_iohits'} + $arc{'prefetch_metadata_iohits'};
 my $total_misses = $arc{'demand_data_misses'} + $arc{'demand_metadata_misses'} + $arc{'prefetch_data_misses'} + $arc{'prefetch_metadata_misses'};
-my $total_accesses = $total_hits + $total_misses;
+my $total_accesses = $total_hits + $total_iohits + $total_misses;
 my $miss_ratio = $total_misses / $total_accesses;
 my $total_accesses_mb = $total_accesses / 1000 / 1000;
 my $total_misses_mb = $total_misses / 1000 / 1000;
