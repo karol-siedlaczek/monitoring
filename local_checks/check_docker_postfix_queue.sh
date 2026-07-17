@@ -27,7 +27,7 @@ case "${flag}" in
 esac
 done
 
-if [[ -z $WARN || -z $CRIT || -z $CONTAINER]]; then
+if [[ -z $WARN || -z $CRIT || -z $CONTAINER ]]; then
     HELP
 fi
 
