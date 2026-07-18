@@ -67,15 +67,15 @@ dayDiff=`echo "$epochDiff"/86400|bc`
 
 if [ "$dayDiff" -le "$_CRITEXPIRYDAYS" ]
 then
-    echo "CRITICAL: $_HOST:$_PORT certificate expires $EXPIRY_ISO (in $dayDiff days)"
+    echo "CRITICAL: $_HOST:$_PORT certificate expires in $dayDiff days ($EXPIRY_ISO)"
     exit 2
 else
     if [  "$dayDiff" -le "$_WARNEXPIRYDAYS" ]
     then
-        echo "WARNING: $_HOST:$_PORT certificate expires $EXPIRY_ISO (in $dayDiff days)"
+        echo "WARNING: $_HOST:$_PORT certificate expires in $dayDiff days ($EXPIRY_ISO)"
         exit 1
     else
-        echo "OK: $_HOST:$_PORT certificate expires $EXPIRY_ISO (in $dayDiff days)"
+        echo "OK: $_HOST:$_PORT certificate expires in $dayDiff days ($EXPIRY_ISO)"
         exit 0
     fi
 fi
