@@ -31,7 +31,16 @@ if [[ -z $WARN || -z $CRIT || -z $CONTAINER ]]; then
     HELP
 fi
 
-queue_size=$(docker exec $CONTAINER mailq | egrep -c '^[A-F0-9]{10}')
+mailq_output=$(docker exec $CONTAINER mailq 2>&1)
+docker_rc=$?
+
+if [ $docker_rc -ne 0 ]; then
+    msg="UNKNOWN: $mailq_output"
+    echo $msg
+    exit $CODE_UNKNOWN
+fi
+
+queue_size=$(echo "$mailq_output" | egrep -c '^[A-F0-9]{10}')
 
 if [ -z $queue_size ]; then
     msg="UNKNOWN: Cannot determine mail queue size"
