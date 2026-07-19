@@ -145,23 +145,23 @@ api_get() {
         "$URL$path" 2>/dev/null
 }
 
-# 1. /sys/health (unauthenticated). standbyok/perfstandbyok normalize HTTP to 200
-#    so we can rely on JSON fields rather than HTTP status codes.
+# 1. /sys/health (unauthenticated). OpenBao encodes health in the HTTP status:
+#    200 active, 429 standby, 473 perf-standby (429/473 normalized to 200 by the
+#    standbyok/perfstandbyok params below), 501 not initialized, 503 sealed.
+#    The body is valid health JSON in all of those cases — including 501/503 —
+#    so we parse the JSON fields first and only fall back to a generic UNKNOWN
+#    when the body isn't the health payload we expect (real 5xx from a proxy,
+#    or a dropped connection / HTTP 000 with no body).
 http_code=$(api_get "/v1/sys/health?standbyok=true&perfstandbyok=true") || {
-    print_msg "UNKNOWN: Failed to reach /sys/health at $URL"
-    exit "$EXIT_UNKNOWN"
+    print_msg "CRITICAL: Failed to reach /sys/health at $URL"
+    exit "$EXIT_CRITICAL"
 }
 
 body=$(cat "$body_file")
 
-if [[ "$http_code" =~ ^5 ]] || [[ "$http_code" == "000" ]]; then
-    print_msg "UNKNOWN: /sys/health returned HTTP $http_code"
-    exit "$EXIT_UNKNOWN"
-fi
-
-if ! echo "$body" | jq -e . >/dev/null 2>&1; then
-    print_msg "UNKNOWN: /sys/health returned non-JSON body (HTTP $http_code)"
-    exit "$EXIT_UNKNOWN"
+if ! echo "$body" | jq -e 'has("initialized") and has("sealed")' >/dev/null 2>&1; then
+    print_msg "CRITICAL: /sys/health returned HTTP $http_code with unexpected body"
+    exit "$EXIT_CRITICAL"
 fi
 
 initialized=$(echo "$body" | jq -r '.initialized')
@@ -172,13 +172,17 @@ version=$(echo "$body" | jq -r '.version // "unknown"')
 cluster_name=$(echo "$body" | jq -r '.cluster_name // "unknown"')
 
 # Short-circuit on hard failures so we report the actual problem rather than
-# "AppRole login failed" (which would be the symptom, not the cause).
+# "AppRole login failed" (which would be the symptom, not the cause). These are
+# driven by the JSON fields, so a 503-sealed reports "sealed" and a 501 reports
+# "not initialized" instead of a meaningless "HTTP 5xx".
 if [[ "$initialized" != "true" ]]; then
     print_msg "CRITICAL: OpenBao is not initialized (v$version)"
     exit "$EXIT_CRITICAL"
 fi
 if [[ "$sealed" == "true" ]]; then
-    print_msg "CRITICAL: OpenBao is sealed (v$version, cluster=$cluster_name)"
+    # A sealed OpenBao omits cluster_name from /sys/health, so don't print it
+    # here — it would always be a meaningless "cluster=unknown".
+    print_msg "CRITICAL: OpenBao is sealed (v$version)"
     exit "$EXIT_CRITICAL"
 fi
 
